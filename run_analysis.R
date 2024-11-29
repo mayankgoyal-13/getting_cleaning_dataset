@@ -1,52 +1,70 @@
-# Merge the training and test dataset
-x_train <- read.table("./UCI HAR Dataset/train/X_train.txt")
-y_train <- read.table("./UCI HAR Dataset/train/y_train.txt")
-subject_train <- read.table("./UCI HAR Dataset/train/subject_train.txt")
+# load activity_labels and features
+activityLabels <- fread(
+  file.path(path, "UCI HAR Dataset/activity_labels.txt"),
+  col.names = c("classLabels", "activityNames")
+)
 
-# Reading test dataset
-x_test <- read.table("./UCI HAR Dataset/test/X_test.txt")
-y_test <- read.table("./UCI HAR Dataset/test/y_test.txt")
-subject_test <- read.table("./UCI HAR Dataset/test/subject_test.txt")
+features <-fread(
+  file.path(path, "/UCI HAR Dataset/features.txt"),
+  col.names = c("index", "featureNames")
+)
 
-# Reading feature vector
-features <- read.table("./UCI HAR Dataset/features.txt")
+# extracting mean and std from features
+featuresNeeded <- grep("(mean|std)\\(\\)", features[, featureNames])
+measurements <- features[featuresNeeded, featureNames]
+measurements <- gsubfn(
+  "(^t|^f|Acc|Gyro|Mag|BodyBody|\\(\\))",
+  list(
+    "t" = "Time",
+    "f" = "Frequency",
+    "Acc" = "Accelerometer",
+    "Gyro" = "Gyroscope",
+    "Mag" = "Magnitude",
+    "BodyBody" = "Body",
+    "()" = ""
+  ),
+  measurements
+)
+# load train data
+train <- fread(file.path(path, "/UCI HAR Dataset/train/X_train.txt"))[, featuresNeeded, with = FALSE]
+setnames(train, colnames(train), measurements)
 
-# Reading activity labels
-activityLabels <- read.table("./UCI HAR Dataset/activity_labels.txt")
-colnames(activityLabels) <- c("activityID", "activityType")
+activityTrain <-
+  fread(file.path(path, "/UCI HAR Dataset/train/y_train.txt"),
+        col.names = "Activity")
+subjectTrain <-
+  fread(file.path(path, "/UCI HAR Dataset/train/subject_train.txt"),
+        col.names = "SubjectNo.")
 
-# Assigning variable names
-colnames(x_train) <- features[, 2]
-colnames(y_train) <- "activityID"
-colnames(subject_train) <- "subjectID"
-colnames(x_test) <- features[, 2]
-colnames(y_test) <- "activityID"
-colnames(subject_test) <- "subjectID"
+train <- cbind(activityTrain, subjectTrain, train) # bind all columns together
 
-# Merging all dataset into one set
-alltrain <- cbind(y_train, subject_train, x_train)
-alltest <- cbind(y_test, subject_test, x_test)
-finaldataset <- rbind(alltrain, alltest)
+# load test data
+test <- fread(file.path(path, "/UCI HAR Dataset/test/X_test.txt"))[, featuresNeeded, with = FALSE]
+setnames(test, colnames(test), measurements)
 
-# mean and sd for each measurement
-mean_and_std <- grepl("activityID|subjectID|mean\\(\\)|std\\(\\)", colnames(finaldataset))
-setforMeanandStd <- finaldataset[, mean_and_std]
+activityTest <-
+  fread(file.path(path, "/UCI HAR Dataset/test/y_test.txt"),
+        col.names = "Activity")
+subjectTest <-
+  fread(file.path(path, "/UCI HAR Dataset/test/subject_test.txt"),
+        col.names = "SubjectNo.")
 
-# descriptive activity names
-setWithActivityNames <- merge(setforMeanandStd, activityLabels, by = "activityID", all.x = TRUE)
+test <- cbind(activityTest, subjectTest, test) 
 
-# label the data set with descriptive variable name
-colnames(setWithActivityNames) <- gsub("^t", "time", colnames(setWithActivityNames))
-colnames(setWithActivityNames) <- gsub("^f", "frequency", colnames(setWithActivityNames))
-colnames(setWithActivityNames) <- gsub("Acc", "Accelerometer", colnames(setWithActivityNames))
-colnames(setWithActivityNames) <- gsub("Gyro", "Gyroscope", colnames(setWithActivityNames))
-colnames(setWithActivityNames) <- gsub("Mag", "Magnitude", colnames(setWithActivityNames))
-colnames(setWithActivityNames) <- gsub("BodyBody", "Body", colnames(setWithActivityNames))
+# merge test and train by rows
+testTrain <- rbind(train, test)
 
-# independent tidy data set with the average of each variable for each activity and each subject
-tidySet <- setWithActivityNames %>%
-  group_by(subjectID, activityID, activityType) %>%
-  summarise_all(mean)
+# factor Activity column based on activity labels
+testTrain[["Activity"]] <- factor(testTrain[, Activity]
+                                  , levels = activityLabels[["classLabels"]]
+                                  , labels = activityLabels[["activityNames"]]
+)
+# as.factor() to create turn subject numbers into factors
+testTrain[["SubjectNo."]] <- as.factor(testTrain[, SubjectNo.])
 
-# Writing second tidy data set into a txt file
-write.table(tidySet, "tidySet.txt", row.names = FALSE)
+# melt then cast the data table
+testTrain <- melt.data.table(testTrain, id=c("SubjectNo.", "Activity"))
+testTrain <- dcast(testTrain, SubjectNo. + Activity ~ variable, mean)
+
+# write final tidy data into new file
+fwrite(testTrain, file="tidyData.txt")
