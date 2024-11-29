@@ -67,4 +67,4 @@ testTrain <- melt.data.table(testTrain, id=c("SubjectNo.", "Activity"))
 testTrain <- dcast(testTrain, SubjectNo. + Activity ~ variable, mean)
 
 # write final tidy data into new file
-fwrite(testTrain, file="tidyData.txt")
+fwrite(testTrain, file="tidySet.txt")
